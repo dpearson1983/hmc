@@ -8,6 +8,7 @@ template <typename T> class hmc{
     double chisq_0, chisq_i;
     double dt;
     int steps;
+    likelihood<T> L;
     
     void integrate();
     
