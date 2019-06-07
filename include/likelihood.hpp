@@ -10,7 +10,9 @@ template <typename T> class likelihood{
     double getChisq();
     
     public:
-        likelihood(std::vector<T> &x, std::vector<double> &data, std::vector<double> &model);
+        likelihood();
+        
+        void init(
         
         double getLikelihood(std::vector<double> &theta);
         
