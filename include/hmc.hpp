@@ -1,3 +1,28 @@
+/* hmc.hpp
+ * David W. Pearson 
+ * 10 June 2019
+ * 
+ * This is a header only library to implement a Hamiltonian Monte Carlo method. The reason it is implemented
+ * as a header only library is due to the fact that the user must define several of the function in 
+ * likelihood.hpp and that class also depends on a type template for the independent variable to allow for
+ * multiple independent variables for each data/model point (e.g. like the galaxy bispectrum or the
+ * three points correlation function).
+ * 
+ * NOTE: This library depends on likelihood.hpp. A stub of a file is included with this file, but there are
+ * several functions that must be defined by the user of this library for the code to function. Those functions
+ * include:
+ *      1. The model calculation
+ *      2. Functions to read the data and data covariance from a file
+ * 
+ * TODO:
+ *      1. Add tracking of chain statistics
+ *          - Calculate running average and variance of each model parameter
+ *      2. Use chain statistics to test for convergence between walkers
+ *      3. Implement function to output logfile that shows the statistics from each chain
+ *      4. Track the set of parameters for which the smallest chi^2 value was seen
+ * 
+ */
+
 #ifndef _HMC_HPP_
 #define _HMC_HPP_
 
@@ -13,6 +38,7 @@
 
 template <typename T> class hmc{
     std::vector<std::vector<double>> theta_0, theta_i, vel, acc, kick;
+    std::vector<std::vector<double>> avgTheta, varTheta;
     std::vector<double> chisq_0, chisq_i;
     std::vector<int> trials, accepted;
     double dt;
@@ -134,13 +160,12 @@ std::string hmc<T>::filename(std::string base, int tid, std::string ext) {
     return file.str();
 }
 
-// TODO: Need to call the constructors for the random number generator and the distributions
-hmc<T>::hmc() {
+hmc<T>::hmc(): gen((std::random_device())()), velDist(0.0, 1.0), trialDist(0.0, 1.0) {
     this->walkers = 0;
 }
 
-// TODO: Need to call the constructors for the random number generator and the distributions
-hmc<T>::hmc(std::vector<double> &theta_0, double dt, int steps, std::vector<double> &kick, likelihood<T> &L) {
+hmc<T>::hmc(std::vector<double> &theta_0, double dt, int steps, std::vector<double> &kick, likelihood<T> &L):
+gen((std::random_device())()), velDist(0.0, 1.0), trialDist(0.0, 1.0) {
     hmc<T>::init(theta_0, dt, steps, kick, L);
 }
 
@@ -152,6 +177,8 @@ hmc<T>::init(std::vector<double> &theta_0, double dt, int steps, std::vector<dou
     this->theta_i = std::vector<std::vector<double>>(walkers, std::vector<double>(theta_0.size()));
     this->vel = std::vector<std::vector<double>>(walkers, std::vector<double>(theta_0.size()));
     this->acc = std::vector<std::vector<double>>(walkers, std::vector<double>(theta_0.size()));
+    this->avgTheta = std::vector<std::vector<double>>(walkers, std::vector<double>(theta_0.size()));
+    this->varTheta = std::vector<std::vector<double>>(walkers, std::vector<double>(theta_0.size()));
     this->kick = kick;
     this->chisq_0 = std::vector<double>(walkers);
     this->chisq_i = std::vector<double>(walkers);
@@ -181,9 +208,10 @@ void hmc<T>::run(int numReals, int numBurn, std::string chainBase, std::string c
         std::cout << "Walker #" << i + 1 << " = " << acceptance << std::endl;
     }
     
-    std::cout << "Running the chains..." << std::endl
+    std::cout << "Running the chains..." << std::endl;
 #pragma omp parallel
     {
+        int tid = omp_get_thread_num();
         this->trials[tid] = 0;
         this->accepted[tid] = 0;
         std::string chainFile = hmc<T>::filename(chainBase, tid, chainExt);
@@ -196,6 +224,12 @@ void hmc<T>::run(int numReals, int numBurn, std::string chainBase, std::string c
             fout << this->chisq_0[tid] << "\n";
         }
         fout.close();
+    }
+    
+    std::cout << "Acceptance rate from each walker:\n";
+    for (int i = 0; i < this->walkers; ++i) {
+        double acceptance = double(this->accepted[i])/double(this->trials[i]);
+        std::cout << "Walker #" << i + 1 << " = " << acceptance << std::endl;
     }
 }
 
